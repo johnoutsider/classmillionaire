@@ -112,7 +112,10 @@ export function parseCSV(raw: string): ParsedRow[] {
   const { data, errors } = Papa.parse<Record<string, string>>(raw.trim(), {
     header: true,
     skipEmptyLines: true,
-    transformHeader: (h) => h.trim().toLowerCase(),
+    // Lowercase, strip a trailing "(optional)" or any other parenthesised
+    // annotation so headers like "Answer C (Optional)" match "answer c".
+    transformHeader: (h) =>
+      h.trim().toLowerCase().replace(/\s*\([^)]*\)\s*$/, "").trim(),
   });
 
   if (errors.length && data.length === 0) {
@@ -190,7 +193,13 @@ export function parseXLSX(buffer: ArrayBuffer): ParsedRow[] {
   }
 
   const headers: string[] = aoa[headerRowIdx].map((h) =>
-    String(h).toLowerCase().split(/\r?\n/)[0].trim()
+    String(h)
+      .toLowerCase()
+      .split(/\r?\n/)[0]
+      .trim()
+      // Strip a trailing "(optional)" / "(something)" annotation
+      .replace(/\s*\([^)]*\)\s*$/, "")
+      .trim()
   );
 
   const dataRows = aoa.slice(headerRowIdx + 1);
