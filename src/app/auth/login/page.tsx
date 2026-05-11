@@ -19,7 +19,9 @@ export default function LoginPage() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-          redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL ?? window.location.origin}/auth/callback`,
+          // Always send the user back to the host they started on, so the
+          // Supabase session cookie scoped to that host is still valid.
+          redirectTo: `${window.location.origin}/auth/callback`,
         },
     });
     if (error) {
