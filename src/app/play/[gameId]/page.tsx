@@ -1,9 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { db } from "@/lib/db";
-import { games, questions, students } from "@/lib/db/schema";
-import { eq, and, inArray } from "drizzle-orm";
+import { games, questions, students, playSessions } from "@/lib/db/schema";
+import { eq, and, inArray, isNull } from "drizzle-orm";
 import { notFound } from "next/navigation";
-import { buildLadder } from "@/lib/game/ladder";
 import GameStage, { type Pace } from "./GameStage";
 
 const PACES: Pace[] = ["fast", "normal", "slow", "showtime"];
@@ -52,6 +51,47 @@ export default async function PlayPage({
 
   const ladder = game.prizeLadder as { rung: number; prize: string; prizeValue: number; isSafetyNet: boolean }[];
 
+  // Load session context if this game belongs to an active session
+  let sessionInfo: {
+    id: string;
+    usedQuestionIds: string[];
+    students: { id: string; name: string }[];
+    studentsPlayedIds: string[];
+  } | null = null;
+
+  if (game.sessionId) {
+    const session = await db.query.playSessions.findFirst({
+      where: and(eq(playSessions.id, game.sessionId), eq(playSessions.teacherId, user.id)),
+    });
+
+    if (session && !session.endedAt) {
+      // All games in this session → union of questionPlans → session-wide used IDs
+      const sessionGames = await db
+        .select({ questionPlan: games.questionPlan, studentId: games.studentId })
+        .from(games)
+        .where(and(eq(games.sessionId, game.sessionId), eq(games.teacherId, user.id)));
+
+      const usedQuestionIds = sessionGames.flatMap((g) => (g.questionPlan as string[]) ?? []);
+      const studentsPlayedIds = sessionGames
+        .map((g) => g.studentId)
+        .filter(Boolean) as string[];
+
+      // All active students for the teacher (for the "Next student" picker)
+      const teacherStudents = await db
+        .select({ id: students.id, name: students.name })
+        .from(students)
+        .where(and(eq(students.teacherId, user.id), isNull(students.archivedAt)))
+        .orderBy(students.name);
+
+      sessionInfo = {
+        id: game.sessionId,
+        usedQuestionIds,
+        students: teacherStudents,
+        studentsPlayedIds,
+      };
+    }
+  }
+
   return (
     <GameStage
       gameId={gameId}
@@ -67,6 +107,7 @@ export default async function PlayPage({
         difficulty: q.difficulty,
         explanation: q.explanation ?? null,
       }))}
+      session={sessionInfo}
     />
   );
 }

@@ -1,18 +1,113 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { games, turns, questions, questionSets } from "@/lib/db/schema";
+import { games, turns, questions, questionSets, playSessions, students } from "@/lib/db/schema";
 import { getTeacherId } from "@/lib/auth/getTeacherId";
-import { eq, and, notInArray } from "drizzle-orm";
+import { eq, and, notInArray, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { buildLadder } from "@/lib/game/ladder";
 import { pickQuestionsForLadder } from "@/lib/game/pickQuestions";
+
+// ─── Session actions ──────────────────────────────────────────────────────────
+
+export async function startSession(data: {
+  setId: string;
+  ladderLength: number;
+  currencyLabel: string;
+  pace: string;
+}): Promise<{ sessionId: string; error?: string }> {
+  const teacherId = await getTeacherId();
+
+  const set = await db.query.questionSets.findFirst({
+    where: and(eq(questionSets.id, data.setId), eq(questionSets.teacherId, teacherId)),
+  });
+  if (!set) return { sessionId: "", error: "Set not found" };
+
+  const [session] = await db
+    .insert(playSessions)
+    .values({
+      teacherId,
+      setId: data.setId,
+      ladderLength: data.ladderLength,
+      currencyLabel: data.currencyLabel,
+      pace: data.pace,
+    })
+    .returning();
+
+  revalidatePath("/dashboard");
+  return { sessionId: session.id };
+}
+
+export async function endSession(sessionId: string): Promise<void> {
+  const teacherId = await getTeacherId();
+  await db
+    .update(playSessions)
+    .set({ endedAt: new Date() })
+    .where(and(eq(playSessions.id, sessionId), eq(playSessions.teacherId, teacherId)));
+
+  revalidatePath("/dashboard");
+}
+
+/** Returns all question IDs already used across games in this session. */
+export async function getSessionUsedQuestionIds(sessionId: string): Promise<string[]> {
+  const teacherId = await getTeacherId();
+
+  const sessionGames = await db
+    .select({ questionPlan: games.questionPlan })
+    .from(games)
+    .where(and(eq(games.sessionId, sessionId), eq(games.teacherId, teacherId)));
+
+  return sessionGames.flatMap((g) => (g.questionPlan as string[]) ?? []);
+}
+
+/** Returns student IDs that have already played at least one game in this session. */
+export async function getSessionStudentsPlayed(sessionId: string): Promise<string[]> {
+  const teacherId = await getTeacherId();
+
+  const sessionGames = await db
+    .select({ studentId: games.studentId })
+    .from(games)
+    .where(and(eq(games.sessionId, sessionId), eq(games.teacherId, teacherId)));
+
+  return sessionGames.map((g) => g.studentId).filter(Boolean) as string[];
+}
+
+/**
+ * Launches the next game in an existing session.
+ * Settings (ladderLength, currencyLabel, pace) are locked from the session row.
+ */
+export async function startNextGameInSession(data: {
+  sessionId: string;
+  studentId: string | null;
+}): Promise<{ gameId: string; pace: string; error?: string }> {
+  const teacherId = await getTeacherId();
+
+  const session = await db.query.playSessions.findFirst({
+    where: and(eq(playSessions.id, data.sessionId), eq(playSessions.teacherId, teacherId)),
+  });
+  if (!session) return { gameId: "", pace: "showtime", error: "Session not found" };
+  if (session.endedAt) return { gameId: "", pace: "showtime", error: "Session already ended" };
+  if (!session.setId) return { gameId: "", pace: "showtime", error: "Session has no question set" };
+
+  const result = await createGame({
+    setId: session.setId,
+    studentId: data.studentId,
+    ladderLength: session.ladderLength,
+    currencyLabel: session.currencyLabel,
+    sessionId: data.sessionId,
+  });
+
+  return { ...result, pace: session.pace };
+}
+
+// ─── Game actions ─────────────────────────────────────────────────────────────
 
 export async function createGame(data: {
   setId: string;
   studentId: string | null;
   ladderLength: number;
   currencyLabel: string;
+  sessionId?: string | null;
 }): Promise<{ gameId: string; error?: string }> {
   const teacherId = await getTeacherId();
 
@@ -21,11 +116,18 @@ export async function createGame(data: {
   });
   if (!set) return { gameId: "", error: "Set not found" };
 
+  // Gather session-wide used question IDs to exclude (prefer unseen)
+  let excludeIds = new Set<string>();
+  if (data.sessionId) {
+    const usedIds = await getSessionUsedQuestionIds(data.sessionId);
+    excludeIds = new Set(usedIds);
+  }
+
   const pool = await db
     .select()
     .from(questions)
     .where(and(eq(questions.setId, data.setId), eq(questions.teacherId, teacherId)));
-  const picked = pickQuestionsForLadder(pool, data.ladderLength);
+  const picked = pickQuestionsForLadder(pool, data.ladderLength, { excludeIds });
   if (!picked) return { gameId: "", error: "Not enough questions in this set for the chosen length." };
 
   const ladder = buildLadder(data.ladderLength, data.currencyLabel);
@@ -34,6 +136,7 @@ export async function createGame(data: {
     .insert(games)
     .values({
       teacherId,
+      sessionId: data.sessionId ?? null,
       studentId: data.studentId ?? null,
       setId: data.setId,
       ladderLength: data.ladderLength,
@@ -147,4 +250,59 @@ export async function getReplacementQuestion(
     }
   }
   return null;
+}
+
+/** Returns the active (not-yet-ended) session for the current teacher, if any. */
+export async function getActiveSession(): Promise<{
+  id: string;
+  setId: string | null;
+  setName: string | null;
+  ladderLength: number;
+  currencyLabel: string;
+  pace: string;
+  studentsPlayed: { id: string; name: string }[];
+} | null> {
+  const teacherId = await getTeacherId();
+
+  const session = await db.query.playSessions.findFirst({
+    where: and(eq(playSessions.teacherId, teacherId), isNull(playSessions.endedAt)),
+  });
+  if (!session) return null;
+
+  // Resolve set name
+  let setName: string | null = null;
+  if (session.setId) {
+    const set = await db.query.questionSets.findFirst({
+      where: eq(questionSets.id, session.setId),
+    });
+    setName = set?.name ?? null;
+  }
+
+  // Gather students who already played
+  const sessionGames = await db
+    .select({ studentId: games.studentId })
+    .from(games)
+    .where(and(eq(games.sessionId, session.id), eq(games.teacherId, teacherId)));
+
+  const studentIds = sessionGames.map((g) => g.studentId).filter(Boolean) as string[];
+  const studentsPlayed: { id: string; name: string }[] = [];
+  if (studentIds.length > 0) {
+    const rows = await db
+      .select({ id: students.id, name: students.name })
+      .from(students)
+      .where(eq(students.teacherId, teacherId));
+    for (const row of rows) {
+      if (studentIds.includes(row.id)) studentsPlayed.push(row);
+    }
+  }
+
+  return {
+    id: session.id,
+    setId: session.setId ?? null,
+    setName,
+    ladderLength: session.ladderLength,
+    currencyLabel: session.currencyLabel,
+    pace: session.pace,
+    studentsPlayed,
+  };
 }

@@ -5,13 +5,15 @@ import { eq, desc, count, isNull, and } from "drizzle-orm";
 import Link from "next/link";
 import { BookOpen, Users, PlayCircle, Plus } from "lucide-react";
 import RecentSetsClient from "@/components/dashboard/RecentSetsClient";
+import ActiveSessionBanner from "@/components/dashboard/ActiveSessionBanner";
+import { getActiveSession } from "@/lib/actions/games";
 
 export default async function DashboardPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
 
-  const [sets, studentList, studentCount, recentGames] = await Promise.all([
+  const [sets, studentList, studentCount, recentGames, activeSession] = await Promise.all([
     db
       .select({
         id: questionSets.id,
@@ -30,12 +32,20 @@ export default async function DashboardPage() {
     db.select({ id: students.id, name: students.name }).from(students).where(and(eq(students.teacherId, user.id), isNull(students.archivedAt))).orderBy(students.name),
     db.select({ count: count() }).from(students).where(eq(students.teacherId, user.id)),
     db.select().from(games).where(eq(games.teacherId, user.id)).orderBy(desc(games.startedAt)).limit(5),
+    getActiveSession(),
   ]);
 
   return (
     <div className="p-8">
       <h1 className="text-2xl font-bold text-white mb-1">Dashboard</h1>
       <p className="text-blue-400 text-sm mb-8">Welcome back — ready to play?</p>
+
+      {activeSession && (
+        <ActiveSessionBanner
+          session={activeSession}
+          allStudents={studentList}
+        />
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-3 gap-4 mb-10">

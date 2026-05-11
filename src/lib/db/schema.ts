@@ -80,11 +80,27 @@ export const questions = pgTable("questions", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const playSessions = pgTable("play_sessions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  teacherId: uuid("teacher_id")
+    .notNull()
+    .references(() => teachers.id, { onDelete: "cascade" }),
+  setId: uuid("set_id").references(() => questionSets.id, { onDelete: "set null" }),
+  ladderLength: integer("ladder_length").notNull(),
+  currencyLabel: text("currency_label").notNull().default("$"),
+  pace: text("pace").notNull().default("showtime"),
+  startedAt: timestamp("started_at").defaultNow().notNull(),
+  endedAt: timestamp("ended_at"),
+});
+
 export const games = pgTable("games", {
   id: uuid("id").primaryKey().defaultRandom(),
   teacherId: uuid("teacher_id")
     .notNull()
     .references(() => teachers.id, { onDelete: "cascade" }),
+  sessionId: uuid("session_id").references(() => playSessions.id, {
+    onDelete: "set null",
+  }),
   studentId: uuid("student_id").references(() => students.id, {
     onDelete: "set null",
   }),
@@ -130,10 +146,17 @@ export const turns = pgTable("turns", {
 
 // ─── Relations ───────────────────────────────────────────────────────────────
 
+export const playSessionRelations = relations(playSessions, ({ one, many }) => ({
+  teacher: one(teachers, { fields: [playSessions.teacherId], references: [teachers.id] }),
+  set: one(questionSets, { fields: [playSessions.setId], references: [questionSets.id] }),
+  games: many(games),
+}));
+
 export const teacherRelations = relations(teachers, ({ many }) => ({
   students: many(students),
   questionSets: many(questionSets),
   games: many(games),
+  playSessions: many(playSessions),
 }));
 
 export const studentRelations = relations(students, ({ one, many }) => ({
@@ -155,6 +178,7 @@ export const questionRelations = relations(questions, ({ one, many }) => ({
 
 export const gameRelations = relations(games, ({ one, many }) => ({
   teacher: one(teachers, { fields: [games.teacherId], references: [teachers.id] }),
+  session: one(playSessions, { fields: [games.sessionId], references: [playSessions.id] }),
   student: one(students, { fields: [games.studentId], references: [students.id] }),
   set: one(questionSets, { fields: [games.setId], references: [questionSets.id] }),
   turns: many(turns),
@@ -173,9 +197,11 @@ export type QuestionSet = typeof questionSets.$inferSelect;
 export type Question = typeof questions.$inferSelect;
 export type Game = typeof games.$inferSelect;
 export type Turn = typeof turns.$inferSelect;
+export type PlaySession = typeof playSessions.$inferSelect;
 
 export type NewStudent = typeof students.$inferInsert;
 export type NewQuestionSet = typeof questionSets.$inferInsert;
 export type NewQuestion = typeof questions.$inferInsert;
 export type NewGame = typeof games.$inferInsert;
 export type NewTurn = typeof turns.$inferInsert;
+export type NewPlaySession = typeof playSessions.$inferInsert;

@@ -17,36 +17,55 @@ function difficultyForRung(rungIndex: number, totalRungs: number): number {
 /**
  * Picks `ladderLength` questions from the pool, ordered by rung difficulty.
  * Falls back to adjacent difficulties if a difficulty tier is under-supplied.
- * Returns null if the pool is too small.
+ * When `excludeIds` is provided (session-wide used question IDs), unseen
+ * questions are preferred; once unseen are exhausted the picker falls back to
+ * already-seen questions so the game always launches successfully.
+ * Returns null only when the total pool is too small.
  */
 export function pickQuestionsForLadder(
   pool: Question[],
-  ladderLength: number
+  ladderLength: number,
+  opts?: { excludeIds?: Set<string> }
 ): Question[] | null {
   if (pool.length < ladderLength) return null;
 
-  // Group by difficulty
-  const byDiff: Record<number, Question[]> = { 1: [], 2: [], 3: [] };
-  for (const q of pool) byDiff[q.difficulty]?.push(q);
-  for (const d of [1, 2, 3]) byDiff[d] = shuffle(byDiff[d]);
+  const sessionExclude = opts?.excludeIds ?? new Set<string>();
+
+  // Build two groups per difficulty: unseen first, seen as fallback
+  const unseenByDiff: Record<number, Question[]> = { 1: [], 2: [], 3: [] };
+  const seenByDiff: Record<number, Question[]> = { 1: [], 2: [], 3: [] };
+  for (const q of pool) {
+    if (sessionExclude.has(q.id)) {
+      seenByDiff[q.difficulty]?.push(q);
+    } else {
+      unseenByDiff[q.difficulty]?.push(q);
+    }
+  }
+  for (const d of [1, 2, 3]) {
+    unseenByDiff[d] = shuffle(unseenByDiff[d]);
+    seenByDiff[d] = shuffle(seenByDiff[d]);
+  }
 
   const picked: Question[] = [];
-  const usedIds = new Set<string>();
+  const usedIds = new Set<string>(); // within-game uniqueness
 
   for (let i = 0; i < ladderLength; i++) {
     const targetDiff = difficultyForRung(i, ladderLength);
 
-    // Try target difficulty, then expand outward: target±1, target±2
+    // Pass 1: prefer unseen; Pass 2: allow session-seen as fallback
     let question: Question | undefined;
-    for (let spread = 0; spread <= 2 && !question; spread++) {
-      for (const d of [targetDiff - spread, targetDiff + spread]) {
-        if (d < 1 || d > 3) continue;
-        question = byDiff[d].find((q) => !usedIds.has(q.id));
-        if (question) break;
+    for (const source of [unseenByDiff, seenByDiff]) {
+      for (let spread = 0; spread <= 2 && !question; spread++) {
+        for (const d of [targetDiff - spread, targetDiff + spread]) {
+          if (d < 1 || d > 3) continue;
+          question = source[d].find((q) => !usedIds.has(q.id));
+          if (question) break;
+        }
       }
+      if (question) break;
     }
 
-    if (!question) return null; // pool exhausted
+    if (!question) return null; // total pool truly exhausted
     usedIds.add(question.id);
     picked.push(question);
   }

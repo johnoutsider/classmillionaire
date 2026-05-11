@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createGame } from "@/lib/actions/games";
+import { createGame, startSession } from "@/lib/actions/games";
 import { toast } from "sonner";
 import { X, PlayCircle, User, Trophy, Timer } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -43,11 +43,25 @@ export default function LaunchModal({
   async function launch() {
     if (length < 1) { toast.error("Pick at least 1 question"); return; }
     setLaunching(true);
+
+    const sessionResult = await startSession({
+      setId,
+      ladderLength: length,
+      currencyLabel: currency,
+      pace,
+    });
+    if (sessionResult.error) {
+      toast.error(sessionResult.error);
+      setLaunching(false);
+      return;
+    }
+
     const result = await createGame({
       setId,
       studentId: studentId || null,
       ladderLength: length,
       currencyLabel: currency,
+      sessionId: sessionResult.sessionId,
     });
     if (result.error) {
       toast.error(result.error);

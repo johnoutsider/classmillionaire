@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useCallback, useState, useRef } from "react";
-import { saveTurn, endGame } from "@/lib/actions/games";
+import { useRouter } from "next/navigation";
+import { saveTurn, endGame, getReplacementQuestion, startNextGameInSession, endSession } from "@/lib/actions/games";
 import { useGameAudio } from "@/lib/game/useGameAudio";
 import "./stage.css";
 
@@ -222,9 +223,46 @@ function PhoneOverlay({ onClose }: { onClose: () => void }) {
   );
 }
 
-function GameOverCard({ won, studentName, finalPrize }: {
-  won: boolean; studentName: string | null; finalPrize: string;
+function GameOverCard({
+  won, studentName, finalPrize, session,
+}: {
+  won: boolean;
+  studentName: string | null;
+  finalPrize: string;
+  session: {
+    id: string;
+    students: { id: string; name: string }[];
+    studentsPlayedIds: string[];
+  } | null;
 }) {
+  const router = useRouter();
+  const [nextStudentId, setNextStudentId] = useState(
+    session?.students.find((s) => !session.studentsPlayedIds.includes(s.id))?.id ?? ""
+  );
+  const [launching, setLaunching] = useState(false);
+  const [ending, setEnding] = useState(false);
+
+  async function handleNextStudent() {
+    if (!session) return;
+    setLaunching(true);
+    const result = await startNextGameInSession({
+      sessionId: session.id,
+      studentId: nextStudentId || null,
+    });
+    if (result.error) {
+      setLaunching(false);
+      return;
+    }
+    router.push(`/play/${result.gameId}?pace=${result.pace}`);
+  }
+
+  async function handleEndSession() {
+    if (!session) return;
+    setEnding(true);
+    await endSession(session.id);
+    router.push("/dashboard");
+  }
+
   return (
     <div className="qs-gameover">
       <div className="qs-gameover-card">
@@ -233,7 +271,44 @@ function GameOverCard({ won, studentName, finalPrize }: {
         <div className="qs-gameover-line"></div>
         <div className="qs-gameover-name">{studentName ?? "Contestant"}</div>
         <div className="qs-gameover-status">{won ? "Wins the top prize" : "Walks away with"}</div>
-        <a href="/dashboard" className="qs-gameover-reset">Back to Dashboard →</a>
+
+        {session && session.students.length > 0 && (
+          <div className="qs-gameover-session">
+            <label className="qs-gameover-session-label">Next student in the hot seat</label>
+            <select
+              value={nextStudentId}
+              onChange={(e) => setNextStudentId(e.target.value)}
+              className="qs-gameover-session-select"
+            >
+              <option value="">— No tracking —</option>
+              {session.students.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}{session.studentsPlayedIds.includes(s.id) ? " ✓ played" : ""}
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={handleNextStudent}
+              disabled={launching}
+              className="qs-gameover-next-btn"
+            >
+              {launching ? "Starting…" : "Next student →"}
+            </button>
+          </div>
+        )}
+
+        <div className="qs-gameover-footer">
+          {session && (
+            <button
+              onClick={handleEndSession}
+              disabled={ending}
+              className="qs-gameover-end-session"
+            >
+              {ending ? "Ending…" : "End session"}
+            </button>
+          )}
+          <a href="/dashboard" className="qs-gameover-reset">Back to Dashboard</a>
+        </div>
       </div>
     </div>
   );
@@ -250,10 +325,12 @@ const LIFELINES = [
 
 export default function GameStage({
   gameId,
+  setId,
   studentName,
   ladder,
   questions,
   pace = "showtime",
+  session = null,
 }: {
   gameId: string;
   setId: string;
@@ -261,6 +338,12 @@ export default function GameStage({
   ladder: LadderRung[];
   questions: GameQuestion[];
   pace?: Pace;
+  session?: {
+    id: string;
+    usedQuestionIds: string[];
+    students: { id: string; name: string }[];
+    studentsPlayedIds: string[];
+  } | null;
 }) {
   const audio = useGameAudio();
 
@@ -443,14 +526,32 @@ export default function GameStage({
     }
   }
 
-  function doSwitch() {
-    const usedIds = new Set(questionsRef.current.slice(0, rung + 1).map((q) => q.id));
-    const replacement =
-      questionsRef.current.find((q) => !usedIds.has(q.id) && q.difficulty === questionsRef.current[rung]?.difficulty) ??
-      questionsRef.current.find((q) => !usedIds.has(q.id));
+  async function doSwitch() {
+    const currentQ = questionsRef.current[rung];
+    if (!currentQ) return;
+
+    // IDs to exclude: all questions in this game + session-wide used
+    const inGameIds = questionsRef.current.map((q) => q.id);
+    const sessionIds = session?.usedQuestionIds ?? [];
+    const allExclude = [...new Set([...inGameIds, ...sessionIds])];
+
+    // Prefer session-unseen; fall back to just in-game exclusion if pool is dry
+    let replacement = await getReplacementQuestion(setId, currentQ.difficulty, allExclude);
+    if (!replacement) {
+      replacement = await getReplacementQuestion(setId, currentQ.difficulty, inGameIds);
+    }
     if (!replacement) return;
+
+    const newQ: GameQuestion = {
+      id: replacement.id,
+      prompt: replacement.prompt,
+      answers: replacement.answers,
+      correctIndex: replacement.correctIndex,
+      difficulty: currentQ.difficulty,
+      explanation: null,
+    };
     const newQuestions = [...questionsRef.current];
-    newQuestions[rung] = replacement;
+    newQuestions[rung] = newQ;
     questionsRef.current = newQuestions;
     setShownAnswers(replacement.answers.slice());
     setSelectedIdx(null);
@@ -486,6 +587,11 @@ export default function GameStage({
         won={phase === "won"}
         studentName={studentName}
         finalPrize={phase === "won" ? (currentLadderRung?.prize ?? "") : safetyNetPrize}
+        session={session ? {
+          id: session.id,
+          students: session.students,
+          studentsPlayedIds: session.studentsPlayedIds,
+        } : null}
       />
     );
   }
