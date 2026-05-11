@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createGame } from "@/lib/actions/games";
 import { toast } from "sonner";
-import { X, PlayCircle, User, Trophy } from "lucide-react";
+import { X, PlayCircle, User, Trophy, Timer } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type Student = { id: string; name: string };
@@ -28,10 +28,17 @@ export default function LaunchModal({
   const [studentId, setStudentId] = useState<string>(students[0]?.id ?? "");
   const [length, setLength] = useState(Math.min(defaultLength, questionCount));
   const [currency, setCurrency] = useState("$");
+  const [pace, setPace] = useState<"fast" | "normal" | "slow" | "showtime">("showtime");
   const [launching, setLaunching] = useState(false);
 
   const maxLength = questionCount;
-  const customCurrencies = ["$", "€", "£", "pts", "stars", "coins"];
+  const customCurrencies = ["$", "€", "£", "so'm", "pts", "stars", "coins"];
+  const paceOptions: { id: typeof pace; label: string; hint: string }[] = [
+    { id: "fast",     label: "Fast",     hint: "0.6s · classroom pace" },
+    { id: "normal",   label: "Normal",   hint: "1.1s · brisk" },
+    { id: "slow",     label: "Slow",     hint: "1.5s · suspenseful" },
+    { id: "showtime", label: "Showtime", hint: "2.0s · TV-show feel" },
+  ];
 
   async function launch() {
     if (length < 1) { toast.error("Pick at least 1 question"); return; }
@@ -47,7 +54,7 @@ export default function LaunchModal({
       setLaunching(false);
       return;
     }
-    router.push(`/play/${result.gameId}`);
+    router.push(`/play/${result.gameId}?pace=${pace}`);
   }
 
   return (
@@ -133,6 +140,36 @@ export default function LaunchModal({
               placeholder="or type custom…"
               className="mt-2 w-full px-3 py-2 rounded-lg bg-blue-950 border border-blue-700 text-white text-sm focus:outline-none focus:border-yellow-400 transition"
             />
+          </div>
+
+          {/* Answer reveal pacing */}
+          <div>
+            <label className="flex items-center gap-2 text-sm text-blue-300 mb-2">
+              <Timer size={14} /> Answer reveal pacing
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              {paceOptions.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => setPace(p.id)}
+                  className={cn(
+                    "flex flex-col items-start px-3 py-2 rounded-lg border text-left transition",
+                    pace === p.id
+                      ? "bg-yellow-400 border-yellow-400 text-gray-900"
+                      : "border-blue-700 text-blue-300 hover:bg-blue-900/50"
+                  )}
+                >
+                  <span className="text-sm font-semibold">{p.label}</span>
+                  <span className={cn(
+                    "text-[11px]",
+                    pace === p.id ? "text-gray-800" : "text-blue-500"
+                  )}>{p.hint}</span>
+                </button>
+              ))}
+            </div>
+            <p className="mt-1.5 text-[11px] text-blue-500">
+              Time between each option (A → B → C → D) appearing on the board.
+            </p>
           </div>
         </div>
 

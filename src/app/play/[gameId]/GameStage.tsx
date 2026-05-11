@@ -12,6 +12,15 @@ export type LadderRung = {
   isSafetyNet: boolean;
 };
 
+export type Pace = "fast" | "normal" | "slow" | "showtime";
+
+const PACE_TIMINGS: Record<Pace, { prompt: number; step: number }> = {
+  fast:     { prompt: 600,  step: 450  },
+  normal:   { prompt: 1100, step: 900  },
+  slow:     { prompt: 1500, step: 1300 },
+  showtime: { prompt: 2000, step: 1700 },
+};
+
 export type GameQuestion = {
   id: string;
   prompt: string;
@@ -244,12 +253,14 @@ export default function GameStage({
   studentName,
   ladder,
   questions,
+  pace = "showtime",
 }: {
   gameId: string;
   setId: string;
   studentName: string | null;
   ladder: LadderRung[];
   questions: GameQuestion[];
+  pace?: Pace;
 }) {
   const audio = useGameAudio();
 
@@ -257,6 +268,7 @@ export default function GameStage({
   const [rung, setRung] = useState(0);
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const [shownAnswers, setShownAnswers] = useState<(string | null)[]>(questions[0]?.answers ?? []);
+  const [revealedCount, setRevealedCount] = useState(0);
   const [lifelinesUsed, setLifelinesUsed] = useState<Set<string>>(new Set());
   const [audienceTally, setAudienceTally] = useState<[number, number, number, number]>([0, 0, 0, 0]);
   const startTimeRef = useRef<number>(Date.now());
@@ -297,6 +309,18 @@ export default function GameStage({
   useEffect(() => { questionsRef.current = questions; }, [questions]);
   const q = questionsRef.current[rung] ?? questions[rung];
 
+  // Stagger the reveal of A → B → C → D after the prompt appears.
+  // Triggers on rung change (new question) and on `switch_question` (which
+  // resets phase to "idle" with a fresh answer set).
+  useEffect(() => {
+    setRevealedCount(0);
+    const { prompt: promptDelay, step: stepDelay } = PACE_TIMINGS[pace];
+    const timers = [1, 2, 3, 4].map((n) =>
+      setTimeout(() => setRevealedCount(n), promptDelay + (n - 1) * stepDelay)
+    );
+    return () => timers.forEach(clearTimeout);
+  }, [rung, q?.id, pace]);
+
   const currentLadderRung = ladder[rung];
   const isLastRung = rung === ladder.length - 1;
 
@@ -308,6 +332,7 @@ export default function GameStage({
   function trySelect(idx: number) {
     if (!["idle", "selected"].includes(phase)) return;
     if (shownAnswers[idx] === null) return;
+    if (idx >= revealedCount) return; // option hasn't arrived yet
     setSelectedIdx(idx);
     setPhase("selected");
   }
@@ -562,14 +587,15 @@ export default function GameStage({
               : (phase === "selected" || phase === "locked") && i === selectedIdx ? "selected"
               : phase === "locked" ? "dim"
               : "idle";
+            const revealed = i < revealedCount;
             return (
               <AnswerPlate
                 key={`${rung}-${i}`}
                 letter={["A", "B", "C", "D"][i]}
-                text={q?.answers[i] ?? ""}
+                text={revealed ? (q?.answers[i] ?? "") : ""}
                 shown={shownAnswers[i] !== null}
                 state={tileState}
-                disabled={!canInteract}
+                disabled={!canInteract || !revealed}
                 onClick={() => trySelect(i)}
               />
             );

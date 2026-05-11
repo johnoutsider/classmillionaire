@@ -4,10 +4,20 @@ import { games, questions, students } from "@/lib/db/schema";
 import { eq, and, inArray } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { buildLadder } from "@/lib/game/ladder";
-import GameStage from "./GameStage";
+import GameStage, { type Pace } from "./GameStage";
 
-export default async function PlayPage({ params }: { params: Promise<{ gameId: string }> }) {
+const PACES: Pace[] = ["fast", "normal", "slow", "showtime"];
+
+export default async function PlayPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ gameId: string }>;
+  searchParams: Promise<{ pace?: string }>;
+}) {
   const { gameId } = await params;
+  const { pace: paceParam } = await searchParams;
+  const pace: Pace = PACES.includes(paceParam as Pace) ? (paceParam as Pace) : "showtime";
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
@@ -47,6 +57,7 @@ export default async function PlayPage({ params }: { params: Promise<{ gameId: s
       gameId={gameId}
       setId={game.setId ?? ""}
       studentName={studentRow?.name ?? null}
+      pace={pace}
       ladder={ladder}
       questions={planQuestions.map((q) => ({
         id: q.id,

@@ -23,6 +23,7 @@ Migrations in `drizzle/` that were applied manually (not via `db:migrate`) are n
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 DATABASE_URL=        # Neon PostgreSQL connection string
+NEXT_PUBLIC_SITE_URL=https://classmillionaire.vercel.app  # production origin; omit in .env.local for dev
 ```
 
 ## Architecture
