@@ -10,6 +10,7 @@ import {
   Users,
   BarChart2,
   LogOut,
+  ShieldCheck,
 } from "lucide-react";
 
 const nav = [
@@ -19,7 +20,13 @@ const nav = [
   { href: "/analytics", label: "Analytics", icon: BarChart2 },
 ];
 
-export default function Sidebar({ userEmail }: { userEmail: string }) {
+export default function Sidebar({
+  userEmail,
+  isAdmin = false,
+}: {
+  userEmail: string;
+  isAdmin?: boolean;
+}) {
   const pathname = usePathname();
   const router = useRouter();
 
@@ -33,7 +40,7 @@ export default function Sidebar({ userEmail }: { userEmail: string }) {
     <aside className="w-60 flex flex-col border-r border-blue-900 bg-millionaire-mid shrink-0">
       {/* Logo */}
       <div className="px-6 py-6 border-b border-blue-900">
-        <span className="text-xl font-bold text-gold-light tracking-tight">ClassMillion</span>
+        <span className="text-xl font-bold text-gold-light tracking-tight">Group Millionaire</span>
       </div>
 
       {/* Nav */}
@@ -62,6 +69,15 @@ export default function Sidebar({ userEmail }: { userEmail: string }) {
       {/* User / sign out */}
       <div className="px-3 py-4 border-t border-blue-900">
         <p className="px-3 text-xs text-blue-500 truncate mb-2">{userEmail}</p>
+        {isAdmin && (
+          <Link
+            href="/admin"
+            className="flex items-center gap-3 w-full px-3 py-2 rounded-lg text-xs text-yellow-400/80 hover:bg-blue-900/50 hover:text-yellow-300 transition mb-1"
+          >
+            <ShieldCheck size={14} />
+            Admin
+          </Link>
+        )}
         <button
           onClick={signOut}
           className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm text-blue-300 hover:bg-blue-900/50 hover:text-white transition"
@@ -70,6 +86,6 @@ export default function Sidebar({ userEmail }: { userEmail: string }) {
           Sign out
         </button>
       </div>
-    </aside>
+    </aside >
   );
 }

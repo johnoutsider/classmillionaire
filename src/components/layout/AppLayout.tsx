@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { teachers } from "@/lib/db/schema";
+import { isCurrentUserAdmin } from "@/lib/auth/admin";
 import Sidebar from "./Sidebar";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -12,9 +13,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // Ensure teacher row exists on first login
   await db.insert(teachers).values({ id: user.id, email: user.email! }).onConflictDoNothing();
 
+  const isAdmin = await isCurrentUserAdmin();
+
   return (
     <div className="flex min-h-screen bg-millionaire-dark">
-      <Sidebar userEmail={user.email ?? ""} />
+      <Sidebar userEmail={user.email ?? ""} isAdmin={isAdmin} />
       <main className="flex-1 overflow-auto flex flex-col items-center">
         <div className="w-full max-w-5xl">{children}</div>
       </main>
