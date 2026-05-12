@@ -264,7 +264,7 @@ function GameOverCard({
   }
 
   return (
-    <div className="qs-gameover">
+    <div className="qs-gameover" data-theme="dark">
       <div className="qs-gameover-card">
         <div className="qs-gameover-eyebrow">{won ? "Top Prize" : "Final Total"}</div>
         <div className="qs-gameover-prize">{finalPrize}</div>
@@ -599,7 +599,7 @@ export default function GameStage({
   const canInteract = ["idle", "selected"].includes(phase);
 
   return (
-    <div className="qs-stage">
+    <div className="qs-stage" data-theme="dark">
       <div className="qs-stage-bg"></div>
       <div className="qs-stage-floor"></div>
 

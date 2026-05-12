@@ -12,6 +12,7 @@ import {
   LogOut,
   ShieldCheck,
 } from "lucide-react";
+import ThemeToggle from "@/components/theme/ThemeToggle";
 
 const nav = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -78,6 +79,7 @@ export default function Sidebar({
             Admin
           </Link>
         )}
+        <ThemeToggle />
         <button
           onClick={signOut}
           className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm text-blue-300 hover:bg-blue-900/50 hover:text-white transition"

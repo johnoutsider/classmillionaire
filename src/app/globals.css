@@ -1,8 +1,22 @@
 @import "tailwindcss";
 
-:root {
+/* ─── Theme tokens ──────────────────────────────────────────────────────────
+   Two themes: dark (default, classic Millionaire) and light. The toggle in
+   the Sidebar flips `data-theme` on <html>. The play stage opts out by
+   wrapping its root in `data-theme="dark"` so the iconic look is preserved.
+   ─────────────────────────────────────────────────────────────────────── */
+:root,
+[data-theme="dark"] {
   --bg-deep: #0a0a1a;
   --bg-mid: #0d1340;
+  --surface: #0d1340;
+  --surface-2: #0a0a1a;
+  --border: #1e3a8a;
+  --text: #ffffff;
+  --text-muted: #93c5fd;   /* blue-300 */
+  --text-faint: #60a5fa;   /* blue-400 */
+  --accent: #f0c93a;
+  --accent-ink: #111827;
   --gold: #c9a227;
   --gold-light: #f0c93a;
   --purple: #6b21a8;
@@ -13,13 +27,28 @@
   --neutral-hover: #1d4ed8;
 }
 
+[data-theme="light"] {
+  --bg-deep: #ffffff;
+  --bg-mid: #f8fafc;        /* slate-50 */
+  --surface: #ffffff;
+  --surface-2: #f1f5f9;     /* slate-100 */
+  --border: #e2e8f0;        /* slate-200 */
+  --text: #0f172a;          /* slate-900 */
+  --text-muted: #475569;    /* slate-600 */
+  --text-faint: #64748b;    /* slate-500 */
+  --accent: #d97706;        /* amber-600 — readable on white */
+  --accent-ink: #ffffff;
+  --gold: #b45309;
+  --gold-light: #d97706;
+}
+
 * {
   box-sizing: border-box;
 }
 
 body {
   background-color: var(--bg-deep);
-  color: #fff;
+  color: var(--text);
   font-family: var(--font-geist-sans, system-ui, sans-serif);
 }
 
@@ -40,3 +69,80 @@ body {
     border-color: var(--gold);
   }
 }
+
+/* ─── Light-mode remaps for Tailwind utilities used across teacher pages ───
+   Avoids touching ~50 component files. Each rule remaps the hardcoded
+   dark-palette utility to a token-based light value. Any subtree that
+   re-asserts `data-theme="dark"` (the play stage) is restored below.
+   ─────────────────────────────────────────────────────────────────────── */
+[data-theme="light"] .border-blue-900,
+[data-theme="light"] .border-blue-800,
+[data-theme="light"] .border-blue-700 {
+  border-color: var(--border);
+}
+
+[data-theme="light"] .bg-blue-950,
+[data-theme="light"] .bg-blue-900,
+[data-theme="light"] .bg-blue-900\/50 {
+  background-color: var(--surface-2);
+}
+
+[data-theme="light"] .text-white {
+  color: var(--text);
+}
+
+[data-theme="light"] .text-blue-200,
+[data-theme="light"] .text-blue-300,
+[data-theme="light"] .text-blue-400,
+[data-theme="light"] .text-blue-500,
+[data-theme="light"] .text-blue-600 {
+  color: var(--text-muted);
+}
+
+[data-theme="light"] .text-yellow-300,
+[data-theme="light"] .text-yellow-400,
+[data-theme="light"] .text-yellow-400\/80 {
+  color: var(--accent);
+}
+
+[data-theme="light"] .bg-yellow-400 {
+  background-color: var(--accent);
+}
+[data-theme="light"] .bg-yellow-400.text-gray-900,
+[data-theme="light"] .bg-yellow-400 .text-gray-900 {
+  color: var(--accent-ink);
+}
+
+[data-theme="light"] .focus\:border-yellow-400:focus {
+  border-color: var(--accent);
+}
+
+/* hover states used in Sidebar / nav */
+[data-theme="light"] .hover\:bg-blue-900\/50:hover {
+  background-color: var(--surface-2);
+}
+[data-theme="light"] .hover\:text-white:hover {
+  color: var(--text);
+}
+[data-theme="light"] .hover\:text-yellow-300:hover {
+  color: var(--accent);
+}
+[data-theme="light"] .hover\:bg-red-950\/50:hover {
+  background-color: #fee2e2; /* red-100 */
+}
+
+/* ─── Re-assert dark inside any opted-out subtree (the play stage) ─────── */
+[data-theme="dark"] .border-blue-900 { border-color: #1e3a8a; }
+[data-theme="dark"] .border-blue-800 { border-color: #1e40af; }
+[data-theme="dark"] .border-blue-700 { border-color: #1d4ed8; }
+[data-theme="dark"] .bg-blue-950     { background-color: #172554; }
+[data-theme="dark"] .bg-blue-900     { background-color: #1e3a8a; }
+[data-theme="dark"] .text-white      { color: #ffffff; }
+[data-theme="dark"] .text-blue-200   { color: #bfdbfe; }
+[data-theme="dark"] .text-blue-300   { color: #93c5fd; }
+[data-theme="dark"] .text-blue-400   { color: #60a5fa; }
+[data-theme="dark"] .text-blue-500   { color: #3b82f6; }
+[data-theme="dark"] .text-blue-600   { color: #2563eb; }
+[data-theme="dark"] .text-yellow-300 { color: #fde047; }
+[data-theme="dark"] .text-yellow-400 { color: #facc15; }
+[data-theme="dark"] .bg-yellow-400   { background-color: #facc15; }
